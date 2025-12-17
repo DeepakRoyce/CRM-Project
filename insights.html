@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sales Insights Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --primary: #2563eb;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: 'Inter', sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: linear-gradient(135deg, #f8fafc, #eef2ff);
+      min-height: 100vh;
+      color: var(--text);
+    }
+
+    /* LOGIN */
+    .login-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .login-card {
+      background: var(--card);
+      padding: 32px;
+      border-radius: 16px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.4rem;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+
+    button {
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* DASHBOARD */
+    header {
+      padding: 18px 24px;
+      background: var(--card);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+      font-weight: 600;
+    }
+
+    main {
+      padding: 24px;
+      display: grid;
+      gap: 24px;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    .kpi-card {
+      background: var(--card);
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+    }
+
+    .kpi-label {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .kpi-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-top: 6px;
+    }
+
+    .charts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+    }
+
+    .chart-card {
+      background: var(--card);
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginView" class="login-wrapper">
+  <div class="login-card">
+    <h1>Insights Login</h1>
+    <input type="password" id="passwordInput" placeholder="Enter password" />
+    <button onclick="checkPassword()">Enter</button>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboardView" style="display:none;">
+  <header>Sales Pipeline Insights</header>
+
+  <main>
+    <!-- KPI Cards -->
+    <div class="kpis">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Leads</div>
+        <div id="totalLeads" class="kpi-value">0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Total Pipeline Value (€)</div>
+        <div id="totalValue" class="kpi-value">0</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts">
+      <div class="chart-card">
+        <h3>Leads by Stage</h3>
+        <canvas id="stageCountChart"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Pipeline Value by Stage (€)</h3>
+        <canvas id="stageValueChart"></canvas>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+  import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+  // TODO: Replace with your Firebase config
+  const firebaseConfig = {
+    apiKey: "AIzaSyDBJsmAcalocllQgvglR0pzfNBjuMXcUMg",
+    authDomain: "crm-project-e509f.firebaseapp.com",
+    projectId: "crm-project-e509f",
+    storageBucket: "crm-project-e509f.firebasestorage.app",
+    messagingSenderId: "714683639312",
+    appId: "1:714683639312:web:de2e7a6a16c5372e020c95"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  const PASSWORD = "NCI@123";
+
+  let stageCountChart, stageValueChart;
+
+  window.checkPassword = () => {
+    const input = document.getElementById("passwordInput").value;
+    if (input === PASSWORD) {
+      document.getElementById("loginView").style.display = "none";
+      document.getElementById("dashboardView").style.display = "block";
+      loadInsights();
+    } else {
+      alert("Incorrect password");
+    }
+  };
+
+  function loadInsights() {
+    onSnapshot(collection(db, "leads"), snapshot => {
+      const leads = snapshot.docs.map(doc => doc.data());
+
+      const stages = ["New","Contacted","Qualified","Proposal","Won","Lost"];
+      const counts = {};
+      const values = {};
+      let totalValue = 0;
+
+      stages.forEach(s => {
+        counts[s] = 0;
+        values[s] = 0;
+      });
+
+      leads.forEach(l => {
+        counts[l.stage]++;
+        values[l.stage] += l.value || 0;
+        totalValue += l.value || 0;
+      });
+
+      document.getElementById("totalLeads").textContent = leads.length;
+      document.getElementById("totalValue").textContent = totalValue.toLocaleString();
+
+      renderCharts(stages, counts, values);
+    });
+  }
+
+  function renderCharts(stages, counts, values) {
+    const countData = stages.map(s => counts[s]);
+    const valueData = stages.map(s => values[s]);
+
+    if (stageCountChart) stageCountChart.destroy();
+    if (stageValueChart) stageValueChart.destroy();
+
+    stageCountChart = new Chart(
+      document.getElementById("stageCountChart"),
+      {
+        type: "bar",
+        data: {
+          labels: stages,
+          datasets: [{
+            label: "Leads",
+            data: countData
+          }]
+        }
+      }
+    );
+
+    stageValueChart = new Chart(
+      document.getElementById("stageValueChart"),
+      {
+        type: "bar",
+        data: {
+          labels: stages,
+          datasets: [{
+            label: "Value (€)",
+            data: valueData
+          }]
+        }
+      }
+    );
+  }
+</script>
+
+</body>
+</html>
